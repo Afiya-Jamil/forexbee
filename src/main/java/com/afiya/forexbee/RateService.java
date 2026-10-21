@@ -1,8 +1,10 @@
 package com.afiya.forexbee;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-
 @Service
 public class RateService {
 
@@ -13,5 +15,11 @@ public class RateService {
                 + from.toLowerCase() + "/" + to.toLowerCase();
         ApiRate result = client.get().uri(url).retrieve().body(ApiRate.class);
         return new RateResponse(from.toUpperCase(), to.toUpperCase(), result.rate());
+    }
+
+        public ConversionResponse convert(BigDecimal amount, String from, String to) {
+        RateResponse r = getLatest(from, to);
+        BigDecimal result = amount.multiply(r.rate()).setScale(2, RoundingMode.HALF_UP);
+        return new ConversionResponse(amount, r.from(), r.to(), r.rate(), result);
     }
 }
