@@ -1,6 +1,9 @@
 package com.afiya.forexbee;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -10,42 +13,52 @@ import org.springframework.stereotype.Component;
 @Component
 public class RateScheduler {
 
-    private static final List<String[]> PAIRS = List.of(
+    // Always tracked, even on a fresh database
+    private static final List<String[]> DEFAULT_PAIRS = List.of(
             new String[]{"OMR", "INR"},
             new String[]{"USD", "INR"},
             new String[]{"EUR", "INR"});
 
     private final RateService rateService;
+    private final RateRecordRepository repository;
 
-    public RateScheduler(RateService rateService) {
+    public RateScheduler(RateService rateService, RateRecordRepository repository) {
         this.rateService = rateService;
+        this.repository = repository;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void onStartup() {
-        for (String[] pair : PAIRS) {
-            try {
-                int saved = rateService.backfill(pair[0], pair[1], 90);
-                System.out.println("Backfilled " + saved + " rows for " + pair[0] + "/" + pair[1]);
-            } catch (Exception e) {
-                System.out.println("Backfill failed for " + pair[0] + "/" + pair[1] + ": " + e.getMessage());
-            }
-        }
-        fetchAll();
+        refreshAll(90);
     }
 
     @Scheduled(cron = "0 0 21 * * *", zone = "Asia/Kolkata")
     public void daily() {
-        fetchAll();
+        refreshAll(7);
     }
 
-    private void fetchAll() {
-        for (String[] pair : PAIRS) {
+    private List<String[]> allPairs() {
+        Set<String> keys = new LinkedHashSet<>();
+        for (String[] p : DEFAULT_PAIRS) {
+            keys.add(p[0] + "/" + p[1]);
+        }
+        for (RateRecordRepository.PairView v : repository.findDistinctPairs()) {
+            keys.add(v.getFromCurrency() + "/" + v.getToCurrency());
+        }
+        List<String[]> result = new ArrayList<>();
+        for (String key : keys) {
+            result.add(key.split("/"));
+        }
+        return result;
+    }
+
+    private void refreshAll(int days) {
+        for (String[] pair : allPairs()) {
             try {
-                rateService.getLatest(pair[0], pair[1]);
-                System.out.println("Saved rate for " + pair[0] + "/" + pair[1]);
+                int saved = rateService.backfill(pair[0], pair[1], days);
+                System.out.println("Refreshed " + pair[0] + "/" + pair[1] + ": " + saved + " new rows");
             } catch (Exception e) {
-                System.out.println("Could not fetch " + pair[0] + "/" + pair[1] + ": " + e.getMessage());
+                System.out.println("Could not refresh " + pair[0] + "/" + pair[1] + ": " + e.getMessage());
             }
         }
     }
