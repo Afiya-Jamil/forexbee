@@ -4,23 +4,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ForexBee</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; background: #fff8e1; margin: 0; }
-    .card { max-width: 420px; margin: 60px auto; background: white; padding: 24px;
+    body { font-family: Arial, sans-serif; background: #fff8e1; margin: 0; padding: 20px 10px; }
+    .card { max-width: 560px; margin: 0 auto 20px; background: white; padding: 24px;
             border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
     h1 { margin-top: 0; color: #f59e0b; }
+    h2 { margin-top: 0; font-size: 18px; color: #b45309; }
     label { display: block; margin: 14px 0 4px; font-weight: bold; }
     input, select { width: 100%; padding: 10px; font-size: 16px; box-sizing: border-box; }
     .row { display: flex; gap: 8px; align-items: flex-end; }
     .row > div { flex: 1; }
     button { padding: 10px 14px; font-size: 16px; border: none; border-radius: 6px;
              background: #f59e0b; color: white; cursor: pointer; }
-    #convert { width: 100%; margin-top: 18px; }
+    .full { width: 100%; margin-top: 18px; }
     #result { margin-top: 18px; font-size: 20px; font-weight: bold; }
-    #info { color: #666; font-size: 14px; margin-top: 4px; }
+    .small { color: #666; font-size: 14px; margin-top: 4px; }
+    .chart-box { position: relative; height: 260px; margin-top: 12px; }
+    #trend { font-size: 18px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+    th, td { text-align: left; padding: 6px; border-bottom: 1px solid #eee; }
+    tr.best { background: #fef3c7; font-weight: bold; }
+    .note { color: #888; font-size: 12px; margin-top: 10px; }
+    .error { color: #b91c1c; }
   </style>
 </head>
 <body>
+
   <div class="card">
     <h1>🐝 ForexBee</h1>
 
@@ -39,9 +49,46 @@
       </div>
     </div>
 
-    <button id="convert">Convert</button>
+    <button id="convert" class="full">Convert</button>
     <div id="result"></div>
-    <div id="info"></div>
+    <div id="info" class="small"></div>
+  </div>
+
+  <div class="card">
+    <h2>Trend and forecast</h2>
+    <div id="trend">Loading...</div>
+    <div id="trendInfo" class="small"></div>
+    <div class="chart-box"><canvas id="chart"></canvas></div>
+    <div class="note">Solid line is saved history, dashed line is the forecast. Trend estimate only, not financial advice.</div>
+  </div>
+
+  <div class="card">
+    <h2>Best day near my date</h2>
+    <label for="targetDate">My target date</label>
+    <input id="targetDate" type="date">
+
+    <div class="row">
+      <div>
+        <label for="window">Look around (days)</label>
+        <select id="window">
+          <option value="3">3 days</option>
+          <option value="5" selected>5 days</option>
+          <option value="7">7 days</option>
+          <option value="10">10 days</option>
+        </select>
+      </div>
+      <div>
+        <label for="goal">I want</label>
+        <select id="goal">
+          <option value="high">Highest rate</option>
+          <option value="low">Lowest rate</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="findBest" class="full">Find best day</button>
+    <div id="bestResult" style="margin-top:16px"></div>
+    <div class="note">Highest rate means you get the most of the "To" currency for each unit of "From". Forecast days are estimates and can be wrong.</div>
   </div>
 
   <script>
@@ -49,10 +96,20 @@
     const toSel = document.getElementById("to");
     const resultEl = document.getElementById("result");
     const infoEl = document.getElementById("info");
+    const trendEl = document.getElementById("trend");
+    const trendInfoEl = document.getElementById("trendInfo");
+    const bestEl = document.getElementById("bestResult");
+    let chart = null;
+
+    async function getJson(url) {
+      const res = await fetch(url);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
 
     async function loadCurrencies() {
-      const res = await fetch("/currencies");
-      const list = await res.json();
+      const list = await getJson("/currencies");
       for (const c of list) {
         const text = c.iso_code + " - " + c.name;
         fromSel.add(new Option(text, c.iso_code));
@@ -60,6 +117,12 @@
       }
       fromSel.value = "OMR";
       toSel.value = "INR";
+
+      const t = new Date();
+      t.setDate(t.getDate() + 10);
+      document.getElementById("targetDate").value = t.toISOString().slice(0, 10);
+
+      convert();
     }
 
     async function convert() {
@@ -67,14 +130,85 @@
       resultEl.textContent = "Loading...";
       infoEl.textContent = "";
       try {
-        const url = "/convert?amount=" + amount + "&from=" + fromSel.value + "&to=" + toSel.value;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error("Could not get that rate");
-        const d = await res.json();
+        const d = await getJson("/convert?amount=" + amount + "&from=" + fromSel.value + "&to=" + toSel.value);
         resultEl.textContent = d.amount + " " + d.from + " = " + d.result + " " + d.to;
         infoEl.textContent = "1 " + d.from + " = " + d.rate + " " + d.to;
       } catch (e) {
-        resultEl.textContent = "Error: " + e.message;
+        resultEl.innerHTML = '<span class="error">Error: ' + e.message + '</span>';
+      }
+      loadTrend();
+      bestEl.innerHTML = "";
+    }
+
+    async function loadTrend() {
+      const from = fromSel.value;
+      const to = toSel.value;
+      trendEl.textContent = "Loading...";
+      trendInfoEl.textContent = "";
+      try {
+        const pred = await getJson("/predict?from=" + from + "&to=" + to + "&days=7");
+        const hist = await getJson("/history?from=" + from + "&to=" + to);
+
+        const arrows = { UP: "⬆ Trending up", DOWN: "⬇ Trending down", FLAT: "➡ Flat" };
+        trendEl.textContent = arrows[pred.direction] + " (" + from + " to " + to + ")";
+        trendInfoEl.textContent = "Latest " + pred.latestRate + " | 7-day average " + pred.shortAverage +
+          " | 30-day average " + pred.longAverage;
+
+        const recent = hist.slice(-45);
+        const lastIdx = recent.length - 1;
+        const labels = recent.map(r => r.rateDate).concat(pred.forecast.map(f => f.date));
+        const actual = recent.map(r => r.rate).concat(pred.forecast.map(() => null));
+        const forecast = recent.map((r, i) => (i === lastIdx ? r.rate : null))
+                               .concat(pred.forecast.map(f => f.rate));
+
+        if (chart) chart.destroy();
+        chart = new Chart(document.getElementById("chart"), {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [
+              { label: "Saved rate", data: actual, borderColor: "#f59e0b", pointRadius: 0, tension: 0.2 },
+              { label: "Forecast", data: forecast, borderColor: "#2563eb", borderDash: [6, 4], pointRadius: 2 }
+            ]
+          },
+          options: {
+            maintainAspectRatio: false,
+            scales: { x: { ticks: { maxTicksLimit: 6 } } }
+          }
+        });
+      } catch (e) {
+        trendEl.innerHTML = '<span class="error">' + e.message + '</span>';
+        trendInfoEl.textContent = "Trend works for pairs that have saved history (see PAIRS in RateScheduler.java).";
+        if (chart) { chart.destroy(); chart = null; }
+      }
+    }
+
+    async function findBest() {
+      const date = document.getElementById("targetDate").value;
+      const win = document.getElementById("window").value;
+      const goal = document.getElementById("goal").value;
+      if (!date) { bestEl.textContent = "Pick a date first."; return; }
+      bestEl.textContent = "Loading...";
+      try {
+        const d = await getJson("/best-day?from=" + fromSel.value + "&to=" + toSel.value +
+          "&date=" + date + "&window=" + win + "&goal=" + goal);
+
+        let html = "<div style='font-size:18px;font-weight:bold'>Best day: " + d.bestDate +
+          " (" + d.bestType + ")</div>" +
+          "<div class='small'>Rate " + d.bestRate + " " + d.to + " per " + d.from + "</div>";
+        if (d.advantagePercent !== null) {
+          html += "<div class='small'>That is " + d.advantagePercent + "% better than your target date (" +
+            d.targetRate + ").</div>";
+        }
+        html += "<table><tr><th>Date</th><th>Rate</th><th>Type</th></tr>";
+        for (const day of d.days) {
+          const cls = day.date === d.bestDate ? " class='best'" : "";
+          html += "<tr" + cls + "><td>" + day.date + "</td><td>" + day.rate + "</td><td>" + day.type + "</td></tr>";
+        }
+        html += "</table>";
+        bestEl.innerHTML = html;
+      } catch (e) {
+        bestEl.innerHTML = '<span class="error">' + e.message + '</span>';
       }
     }
 
@@ -85,6 +219,7 @@
       convert();
     });
     document.getElementById("convert").addEventListener("click", convert);
+    document.getElementById("findBest").addEventListener("click", findBest);
 
     loadCurrencies();
   </script>
