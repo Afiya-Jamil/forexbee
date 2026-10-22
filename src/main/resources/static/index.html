@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ForexBee</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #fff8e1; margin: 0; }
+    .card { max-width: 420px; margin: 60px auto; background: white; padding: 24px;
+            border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    h1 { margin-top: 0; color: #f59e0b; }
+    label { display: block; margin: 14px 0 4px; font-weight: bold; }
+    input, select { width: 100%; padding: 10px; font-size: 16px; box-sizing: border-box; }
+    .row { display: flex; gap: 8px; align-items: flex-end; }
+    .row > div { flex: 1; }
+    button { padding: 10px 14px; font-size: 16px; border: none; border-radius: 6px;
+             background: #f59e0b; color: white; cursor: pointer; }
+    #convert { width: 100%; margin-top: 18px; }
+    #result { margin-top: 18px; font-size: 20px; font-weight: bold; }
+    #info { color: #666; font-size: 14px; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🐝 ForexBee</h1>
+
+    <label for="amount">Amount</label>
+    <input id="amount" type="number" value="100" min="0" step="any">
+
+    <div class="row">
+      <div>
+        <label for="from">From</label>
+        <select id="from"></select>
+      </div>
+      <button id="swap" title="Swap">⇄</button>
+      <div>
+        <label for="to">To</label>
+        <select id="to"></select>
+      </div>
+    </div>
+
+    <button id="convert">Convert</button>
+    <div id="result"></div>
+    <div id="info"></div>
+  </div>
+
+  <script>
+    const fromSel = document.getElementById("from");
+    const toSel = document.getElementById("to");
+    const resultEl = document.getElementById("result");
+    const infoEl = document.getElementById("info");
+
+    async function loadCurrencies() {
+      const res = await fetch("/currencies");
+      const list = await res.json();
+      for (const c of list) {
+        const text = c.iso_code + " - " + c.name;
+        fromSel.add(new Option(text, c.iso_code));
+        toSel.add(new Option(text, c.iso_code));
+      }
+      fromSel.value = "OMR";
+      toSel.value = "INR";
+    }
+
+    async function convert() {
+      const amount = document.getElementById("amount").value;
+      resultEl.textContent = "Loading...";
+      infoEl.textContent = "";
+      try {
+        const url = "/convert?amount=" + amount + "&from=" + fromSel.value + "&to=" + toSel.value;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Could not get that rate");
+        const d = await res.json();
+        resultEl.textContent = d.amount + " " + d.from + " = " + d.result + " " + d.to;
+        infoEl.textContent = "1 " + d.from + " = " + d.rate + " " + d.to;
+      } catch (e) {
+        resultEl.textContent = "Error: " + e.message;
+      }
+    }
+
+    document.getElementById("swap").addEventListener("click", () => {
+      const temp = fromSel.value;
+      fromSel.value = toSel.value;
+      toSel.value = temp;
+      convert();
+    });
+    document.getElementById("convert").addEventListener("click", convert);
+
+    loadCurrencies();
+  </script>
+</body>
+</html>
