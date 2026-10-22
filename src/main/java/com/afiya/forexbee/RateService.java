@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
+
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -52,5 +53,24 @@ public class RateService {
                 .retrieve()
                 .body(CurrencyInfo[].class);
         return Arrays.asList(list);
+    }
+        public int backfill(String from, String to, int days) {
+        String f = from.toUpperCase();
+        String t = to.toUpperCase();
+        LocalDate start = LocalDate.now().minusDays(days);
+        String url = "https://api.frankfurter.dev/v2/rates?from=" + start
+                + "&base=" + f + "&quotes=" + t;
+        ApiHistoryRate[] rows = client.get().uri(url).retrieve().body(ApiHistoryRate[].class);
+        if (rows == null) {
+            return 0;
+        }
+        int saved = 0;
+        for (ApiHistoryRate row : rows) {
+            if (!repository.existsByFromCurrencyAndToCurrencyAndRateDate(f, t, row.date())) {
+                repository.save(new RateRecord(f, t, row.date(), row.rate()));
+                saved++;
+            }
+        }
+        return saved;
     }
 }
