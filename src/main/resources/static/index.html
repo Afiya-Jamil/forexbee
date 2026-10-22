@@ -58,6 +58,7 @@
     <h2>Trend and forecast</h2>
     <div id="trend">Loading...</div>
     <div id="trendInfo" class="small"></div>
+    <div id="dataDate" class="small"></div>
     <div class="chart-box"><canvas id="chart"></canvas></div>
     <div class="note">Solid line is saved history, dashed line is the forecast. Trend estimate only, not financial advice.</div>
   </div>
@@ -92,12 +93,15 @@
   </div>
 
   <script>
+    const HIDDEN = ["XAU", "XAG", "XPD", "XPT", "XDR", "CMD"];
+
     const fromSel = document.getElementById("from");
     const toSel = document.getElementById("to");
     const resultEl = document.getElementById("result");
     const infoEl = document.getElementById("info");
     const trendEl = document.getElementById("trend");
     const trendInfoEl = document.getElementById("trendInfo");
+    const dataDateEl = document.getElementById("dataDate");
     const bestEl = document.getElementById("bestResult");
     let chart = null;
 
@@ -111,6 +115,7 @@
     async function loadCurrencies() {
       const list = await getJson("/currencies");
       for (const c of list) {
+        if (HIDDEN.includes(c.iso_code)) continue;
         const text = c.iso_code + " - " + c.name;
         fromSel.add(new Option(text, c.iso_code));
         toSel.add(new Option(text, c.iso_code));
@@ -145,6 +150,7 @@
       const to = toSel.value;
       trendEl.textContent = "Loading...";
       trendInfoEl.textContent = "";
+      dataDateEl.textContent = "";
       try {
         const pred = await getJson("/predict?from=" + from + "&to=" + to + "&days=7");
         const hist = await getJson("/history?from=" + from + "&to=" + to);
@@ -153,6 +159,7 @@
         trendEl.textContent = arrows[pred.direction] + " (" + from + " to " + to + ")";
         trendInfoEl.textContent = "Latest " + pred.latestRate + " | 7-day average " + pred.shortAverage +
           " | 30-day average " + pred.longAverage;
+        dataDateEl.textContent = "Data up to " + pred.lastDate;
 
         const recent = hist.slice(-45);
         const lastIdx = recent.length - 1;
@@ -178,7 +185,7 @@
         });
       } catch (e) {
         trendEl.innerHTML = '<span class="error">' + e.message + '</span>';
-        trendInfoEl.textContent = "Trend works for pairs that have saved history (see PAIRS in RateScheduler.java).";
+        trendInfoEl.textContent = "Not enough history for this pair yet.";
         if (chart) { chart.destroy(); chart = null; }
       }
     }

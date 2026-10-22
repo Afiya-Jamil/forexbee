@@ -5,12 +5,17 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 @Service
 public class RateService {
+
+    // Currencies that use 3 decimal places
+    private static final Set<String> THREE_DECIMALS =
+            Set.of("OMR", "KWD", "BHD", "JOD", "IQD", "LYD", "TND");
 
     private final RestClient client = RestClient.create();
     private final RateRecordRepository repository;
@@ -43,7 +48,8 @@ public class RateService {
 
     public ConversionResponse convert(BigDecimal amount, String from, String to) {
         RateResponse r = getLatest(from, to);
-        BigDecimal result = amount.multiply(r.rate()).setScale(2, RoundingMode.HALF_UP);
+        int scale = THREE_DECIMALS.contains(r.to()) ? 3 : 2;
+        BigDecimal result = amount.multiply(r.rate()).setScale(scale, RoundingMode.HALF_UP);
         return new ConversionResponse(amount, r.from(), r.to(), r.rate(), result);
     }
 
@@ -54,7 +60,8 @@ public class RateService {
                 .body(CurrencyInfo[].class);
         return Arrays.asList(list);
     }
-        public int backfill(String from, String to, int days) {
+
+    public int backfill(String from, String to, int days) {
         String f = from.toUpperCase();
         String t = to.toUpperCase();
         LocalDate start = LocalDate.now().minusDays(days);
