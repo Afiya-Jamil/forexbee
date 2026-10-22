@@ -9,9 +9,11 @@ import org.springframework.stereotype.Service;
 public class PredictionService {
 
     private final RateRecordRepository repository;
+    private final RateService rateService;
 
-    public PredictionService(RateRecordRepository repository) {
+    public PredictionService(RateRecordRepository repository, RateService rateService) {
         this.repository = repository;
+        this.rateService = rateService;
     }
 
     public PredictionResponse predict(String from, String to, int days) {
@@ -22,7 +24,11 @@ public class PredictionService {
         List<RateRecord> all =
                 repository.findByFromCurrencyAndToCurrencyOrderByRateDateAsc(f, t);
         if (all.size() < 10) {
-            throw new IllegalStateException("Not enough saved history for " + f + "/" + t);
+            rateService.backfill(f, t, 90);
+            all = repository.findByFromCurrencyAndToCurrencyOrderByRateDateAsc(f, t);
+        }
+        if (all.size() < 10) {
+            throw new IllegalStateException("Not enough history available for " + f + "/" + t);
         }
 
         int n = Math.min(30, all.size());
