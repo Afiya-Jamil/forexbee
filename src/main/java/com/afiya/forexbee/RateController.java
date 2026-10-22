@@ -29,4 +29,9 @@ public class RateController {
     public List<CurrencyInfo> currencies() {
         return rateService.getCurrencies();
     }
+
+        @GetMapping("/history")
+    public List<RateRecord> history(@RequestParam String from, @RequestParam String to) {
+        return rateService.getHistory(from, to);
+    }
 }
